@@ -255,6 +255,7 @@ One payment. **Lifetime access** to the code and all future updates.
 
 <!-- TODO: add the Gumroad product link -->
 **Available on Gumroad.**
+https://aadilsalman.gumroad.com/l/versalaunch
 
 ## 📄 License
 
