@@ -2,7 +2,8 @@ import { PlanBadge } from "@/components/shared/badges";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AdminPagination, AdminSearch } from "@/features/admin/components/admin-table-controls";
+import { Pagination } from "@/components/shared/pagination";
+import { AdminSearch } from "@/features/admin/components/admin-table-controls";
 import { ADMIN_PAGE_SIZE, listTeams } from "@/features/admin/queries";
 
 export default async function AdminTeamsPage({ searchParams }: PageProps<"/admin/teams">) {
@@ -56,7 +57,7 @@ export default async function AdminTeamsPage({ searchParams }: PageProps<"/admin
           </TableBody>
         </Table>
       </div>
-      <AdminPagination page={pageNumber} pageSize={ADMIN_PAGE_SIZE} total={total} query={query} />
+      <Pagination page={pageNumber} pageSize={ADMIN_PAGE_SIZE} total={total} params={{ q: query }} />
     </>
   );
 }

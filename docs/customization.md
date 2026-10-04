@@ -9,6 +9,7 @@ Recipes for making the boilerplate your own. Most changes happen in `src/config/
 | `src/config/billing.ts` | Plans, prices, entitlements, seat limits, trial length |
 | `src/config/marketing.ts` | All landing page copy |
 | `src/config/navigation.ts` | Sidebar items |
+| `src/config/observability.ts` | Log levels, Sentry sampling and replay, audit log on/off, log retention |
 | `src/app/globals.css` | Colors, radius (design tokens) |
 
 ---
@@ -102,6 +103,37 @@ Follow the same shape as `src/features/teams`:
 1. Create `emails/my-email.tsx` using `EmailLayout` (preview it with `pnpm email:dev`).
 2. Add a `sendMyEmail()` helper in `src/features/email/send.ts`.
 3. Call it from a Server Action. To switch email providers, rewrite only `sendEmail()` in that file.
+
+## Show live Stripe prices
+
+Prices on the pricing table come from the `products` / `prices` tables, which mirror your Stripe catalog:
+
+```bash
+pnpm stripe:sync   # once after setup, and after switching test ↔ live mode
+```
+
+After that, the Stripe webhook keeps them in sync and refreshes the pricing pages automatically. Change a price in Stripe, then point the matching `NEXT_PUBLIC_STRIPE_PRICE_*` variable at the new price ID (Stripe prices can't be edited, only replaced). Until a price has synced, the `amount` in `src/config/billing.ts` is shown.
+
+## Turn on error tracking (Sentry)
+
+1. Create a Next.js project on [sentry.io](https://sentry.io) and copy its DSN.
+2. Set `NEXT_PUBLIC_SENTRY_DSN` in `.env.local` (and in Vercel).
+3. Optional: set `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN` for readable stack traces (source maps).
+4. Adjust `tracesSampleRate` or turn on `sessionReplay` in `src/config/observability.ts`.
+
+Without a DSN, errors are still printed as JSON and stored in `app_logs` (see `/admin/logs`).
+
+## Log something or add an audit event
+
+```ts
+import { logger } from "@/lib/logger";
+logger.warn("projects.import_slow", { teamId, durationMs });
+
+import { recordAuditEvent } from "@/features/audit/record";
+await recordAuditEvent({ action: "project.deleted", actor: user, teamId: team.id, target: { type: "project", id } });
+```
+
+For a new audit action, add it (with a label) to `src/features/audit/lib/events.ts` first. It then appears in the team's **Settings → Audit log** and in `/admin/audit-logs`.
 
 ## Make someone a platform admin
 

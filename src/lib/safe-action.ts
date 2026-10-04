@@ -4,6 +4,7 @@ import type { PostgrestError, User } from "@supabase/supabase-js";
 import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import type { ActionResult } from "@/lib/action-result";
+import { logger } from "@/lib/logger";
 import { createClient, type ServerClient } from "@/lib/supabase/server";
 import type { Team, TeamRole } from "@/types/database";
 
@@ -43,7 +44,7 @@ export function toActionError(
   if (error.code === "23505") {
     return new ActionError(messages.uniqueViolation ?? "That already exists.");
   }
-  console.error("[action] Database error:", error);
+  logger.error("action.database_error", { error });
   return new ActionError("Something went wrong. Please try again.");
 }
 
@@ -56,7 +57,7 @@ async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
     // Let Next.js handle redirect() and notFound().
     unstable_rethrow(error);
     if (error instanceof ActionError) return { ok: false, error: error.message };
-    console.error("[action] Unexpected error:", error);
+    logger.error("action.unexpected_error", { error });
     return { ok: false, error: "Something went wrong. Please try again." };
   }
 }

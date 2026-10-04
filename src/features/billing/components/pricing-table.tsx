@@ -18,6 +18,7 @@ import {
 import { useAction } from "@/hooks/use-action";
 import { cn } from "@/lib/utils";
 import { createCheckoutSession } from "../actions";
+import { resolveDisplayPrice, type PriceCatalog } from "../lib/catalog";
 
 type RecurringInterval = Exclude<BillingInterval, "one_time">;
 
@@ -47,7 +48,11 @@ const INTERVAL_SUFFIX: Record<BillingInterval, string> = {
   one_time: " one-time",
 };
 
-export function PricingTable({ mode }: { mode: PricingTableMode }) {
+/**
+ * `catalog` holds live Stripe prices (from the `prices` table). When a price is
+ * missing from it, the `amount` in src/config/billing.ts is shown instead.
+ */
+export function PricingTable({ mode, catalog }: { mode: PricingTableMode; catalog?: PriceCatalog }) {
   const [interval, setInterval] = useState<RecurringInterval>(billingConfig.defaultInterval);
   const hasRecurring = billingConfig.plans.some((plan) =>
     plan.prices.some((price) => price.interval !== "one_time"),
@@ -76,6 +81,7 @@ export function PricingTable({ mode }: { mode: PricingTableMode }) {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {billingConfig.plans.map((plan) => {
           const price = priceFor(plan, interval);
+          const display = price ? resolveDisplayPrice(price, catalog, billingConfig.currency) : undefined;
           return (
             <Card
               key={plan.id}
@@ -89,7 +95,7 @@ export function PricingTable({ mode }: { mode: PricingTableMode }) {
                 <CardDescription>{plan.description}</CardDescription>
                 <div className="pt-4">
                   <span className="text-4xl font-semibold tracking-tight">
-                    {formatPrice(price?.amount ?? 0)}
+                    {formatPrice(display?.amount ?? 0, display?.currency)}
                   </span>
                   <span className="text-sm text-muted-foreground">
                     {price ? INTERVAL_SUFFIX[price.interval] : " forever"}
@@ -107,7 +113,7 @@ export function PricingTable({ mode }: { mode: PricingTableMode }) {
                 </ul>
               </CardContent>
               <CardFooter>
-                <PlanButton plan={plan} price={price} mode={mode} />
+                <PlanButton plan={plan} price={price} available={display?.available ?? true} mode={mode} />
               </CardFooter>
             </Card>
           );
@@ -117,7 +123,18 @@ export function PricingTable({ mode }: { mode: PricingTableMode }) {
   );
 }
 
-function PlanButton({ plan, price, mode }: { plan: Plan; price?: PlanPrice; mode: PricingTableMode }) {
+function PlanButton({
+  plan,
+  price,
+  available,
+  mode,
+}: {
+  plan: Plan;
+  price?: PlanPrice;
+  /** False when the price is archived in Stripe. */
+  available: boolean;
+  mode: PricingTableMode;
+}) {
   const variant = plan.highlighted ? "default" : "outline";
 
   if (mode.kind === "marketing") {
@@ -137,6 +154,7 @@ function PlanButton({ plan, price, mode }: { plan: Plan; price?: PlanPrice; mode
   if (mode.currentPlanId === plan.id) return disabled("Current plan");
   if (!price) return null;
   if (!price.priceId) return disabled("Price not configured");
+  if (!available) return disabled("No longer available");
   if (!mode.canPurchase) return disabled("Only owners can upgrade");
   if (mode.hasSubscription && price.interval !== "one_time") return disabled("Use “Manage billing”");
 

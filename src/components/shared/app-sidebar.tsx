@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Building2, LayoutDashboard, Sparkles, Users } from "lucide-react";
+import { ArrowLeft, Building2, FileWarning, LayoutDashboard, ScrollText, Sparkles, Users } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
 import { getFreePlan } from "@/config/billing";
 import { features } from "@/config/features";
 import { appNavigation, teamPath, type NavItem } from "@/config/navigation";
+import { observabilityConfig } from "@/config/observability";
 import { TeamSwitcher, type SwitcherTeam } from "@/features/teams/components/team-switcher";
 import { canManageBilling } from "@/features/teams/lib/permissions";
 import { Logo } from "./logo";
@@ -71,6 +72,7 @@ export function AppSidebar({
     if (item.roles && !item.roles.includes(activeTeam.role)) return false;
     if (item.requires === "teams" && (!features.teams.enabled || activeTeam.isPersonal)) return false;
     if (item.requires === "billing" && !billingEnabled) return false;
+    if (item.requires === "auditLog" && !observabilityConfig.auditLog) return false;
     return true;
   };
   const toLinks = (items: NavItem[]) =>
@@ -123,6 +125,10 @@ export function AdminSidebar() {
             { title: "Overview", href: "/admin", icon: LayoutDashboard },
             { title: "Users", href: "/admin/users", icon: Users },
             { title: "Teams", href: "/admin/teams", icon: Building2 },
+            ...(observabilityConfig.auditLog
+              ? [{ title: "Audit log", href: "/admin/audit-logs", icon: ScrollText }]
+              : []),
+            { title: "App logs", href: "/admin/logs", icon: FileWarning },
           ]}
           pathname={pathname}
         />

@@ -1,7 +1,11 @@
 import "server-only";
 
+import { revalidatePath } from "next/cache";
 import type Stripe from "stripe";
+import { recordAuditEvent } from "@/features/audit/record";
+import { logger } from "@/lib/logger";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { toPriceRow, toProductRow } from "../lib/catalog";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 interface Deps {
@@ -25,6 +29,12 @@ export const HANDLED_EVENTS = [
   "invoice.payment_failed",
   "invoice.paid",
   "charge.refunded",
+  "product.created",
+  "product.updated",
+  "product.deleted",
+  "price.created",
+  "price.updated",
+  "price.deleted",
 ] as const;
 
 export async function handleStripeEvent(event: Stripe.Event, deps: Deps): Promise<void> {
@@ -38,20 +48,50 @@ export async function handleStripeEvent(event: Stripe.Event, deps: Deps): Promis
     case "customer.subscription.updated":
     case "customer.subscription.deleted":
     case "customer.subscription.paused":
-    case "customer.subscription.resumed":
-      await syncSubscription(event.data.object.id, deps);
+    case "customer.subscription.resumed": {
+      const synced = await syncSubscription(event.data.object.id, deps);
+      if (synced) {
+        await recordAuditEvent({
+          action: "billing.subscription_updated",
+          teamId: synced.teamId,
+          target: { type: "subscription", id: synced.subscriptionId },
+          metadata: { stripeEvent: event.type, status: synced.status, priceId: synced.priceId },
+        });
+      }
       break;
+    }
 
     case "invoice.paid":
     case "invoice.payment_failed": {
       const subscription = event.data.object.parent?.subscription_details?.subscription;
       const subscriptionId = typeof subscription === "string" ? subscription : subscription?.id;
       if (subscriptionId) await syncSubscription(subscriptionId, deps);
+      if (event.type === "invoice.payment_failed") {
+        logger.warn("billing.payment_failed", { invoiceId: event.data.object.id, subscriptionId });
+      }
       break;
     }
 
     case "charge.refunded":
       await markPurchaseRefunded(event.data.object, deps);
+      break;
+
+    case "product.created":
+    case "product.updated":
+      await syncProduct(event.data.object.id, deps);
+      break;
+
+    case "product.deleted":
+      await deactivateCatalogRow("products", event.data.object.id, deps);
+      break;
+
+    case "price.created":
+    case "price.updated":
+      await syncPrice(event.data.object.id, deps);
+      break;
+
+    case "price.deleted":
+      await deactivateCatalogRow("prices", event.data.object.id, deps);
       break;
 
     default:
@@ -60,11 +100,15 @@ export async function handleStripeEvent(event: Stripe.Event, deps: Deps): Promis
   }
 }
 
+// -----------------------------------------------------------------------------
+// Checkout, subscriptions and purchases
+// -----------------------------------------------------------------------------
+
 async function syncCheckoutSession(sessionId: string, { stripe, admin }: Deps) {
   const session = await stripe.checkout.sessions.retrieve(sessionId);
   const teamId = session.client_reference_id ?? session.metadata?.team_id;
   if (!teamId) {
-    console.warn(`[stripe] Checkout session ${session.id} has no team id; ignoring.`);
+    logger.warn("stripe.checkout_without_team", { sessionId: session.id });
     return;
   }
 
@@ -104,16 +148,24 @@ async function syncCheckoutSession(sessionId: string, { stripe, admin }: Deps) {
       status: "paid",
     });
     if (error) throw error;
+
+    await recordAuditEvent({
+      action: "billing.purchase_completed",
+      teamId,
+      target: { type: "purchase", id: session.id },
+      metadata: { priceId, amountTotal: session.amount_total, currency: session.currency },
+    });
   }
 }
 
+/** Upserts our copy of a subscription. Returns what was written, or null if it has no team. */
 async function syncSubscription(subscriptionId: string, { stripe, admin }: Deps, knownTeamId?: string) {
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
   const teamId =
     knownTeamId ?? subscription.metadata.team_id ?? (await findTeamByCustomer(subscription, admin));
   if (!teamId) {
-    console.warn(`[stripe] Subscription ${subscription.id} has no team; ignoring.`);
-    return;
+    logger.warn("stripe.subscription_without_team", { subscriptionId: subscription.id });
+    return null;
   }
 
   const item = subscription.items.data[0];
@@ -131,6 +183,8 @@ async function syncSubscription(subscriptionId: string, { stripe, admin }: Deps,
     cancel_at_period_end: subscription.cancel_at_period_end,
   });
   if (error) throw error;
+
+  return { teamId, subscriptionId: subscription.id, status: subscription.status, priceId: item.price.id };
 }
 
 async function findTeamByCustomer(subscription: Stripe.Subscription, admin: AdminClient) {
@@ -155,6 +209,55 @@ async function markPurchaseRefunded(charge: Stripe.Charge, { stripe, admin }: De
   const session = sessions.data[0];
   if (!session) return;
 
-  const { error } = await admin.from("purchases").update({ status: "refunded" }).eq("id", session.id);
+  const { data, error } = await admin
+    .from("purchases")
+    .update({ status: "refunded" })
+    .eq("id", session.id)
+    .select("team_id");
   if (error) throw error;
+
+  const teamId = data?.[0]?.team_id;
+  if (teamId) {
+    await recordAuditEvent({
+      action: "billing.purchase_refunded",
+      teamId,
+      target: { type: "purchase", id: session.id },
+      metadata: { chargeId: charge.id },
+    });
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Product catalog (public prices shown on the pricing page)
+// -----------------------------------------------------------------------------
+
+/** Pricing pages are cached; refresh them whenever the catalog changes. */
+function revalidatePricingPages() {
+  revalidatePath("/");
+  revalidatePath("/pricing");
+}
+
+async function syncProduct(productId: string, { stripe, admin }: Deps) {
+  const product = await stripe.products.retrieve(productId);
+  const { error } = await admin.from("products").upsert(toProductRow(product));
+  if (error) throw error;
+  revalidatePricingPages();
+}
+
+async function syncPrice(priceId: string, deps: Deps) {
+  const price = await deps.stripe.prices.retrieve(priceId);
+  // Prices reference products, which may not have synced yet (events arrive in any order).
+  const productId = typeof price.product === "string" ? price.product : price.product.id;
+  await syncProduct(productId, deps);
+
+  const { error } = await deps.admin.from("prices").upsert(toPriceRow(price));
+  if (error) throw error;
+  revalidatePricingPages();
+}
+
+/** Deleted objects can't be re-fetched, so just mark our copy inactive. */
+async function deactivateCatalogRow(table: "products" | "prices", id: string, { admin }: Deps) {
+  const { error } = await admin.from(table).update({ active: false }).eq("id", id);
+  if (error) throw error;
+  revalidatePricingPages();
 }

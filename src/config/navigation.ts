@@ -1,6 +1,7 @@
 import {
   CreditCard,
   LayoutDashboard,
+  ScrollText,
   Settings,
   Users,
   type LucideIcon,
@@ -14,8 +15,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Only show to these roles. Omit to show to everyone. */
   roles?: TeamRole[];
-  /** Only show when this feature is enabled in src/config/features.ts. */
-  requires?: "teams" | "billing";
+  /** Only show when this feature is enabled (src/config/features.ts / observability.ts). */
+  requires?: "teams" | "billing" | "auditLog";
 }
 
 /**
@@ -28,6 +29,13 @@ export const appNavigation: { main: NavItem[]; settings: NavItem[] } = {
     { title: "General", path: "/settings", icon: Settings },
     { title: "Members", path: "/settings/members", icon: Users, requires: "teams" },
     { title: "Billing", path: "/settings/billing", icon: CreditCard, requires: "billing" },
+    {
+      title: "Audit log",
+      path: "/settings/audit-log",
+      icon: ScrollText,
+      roles: ["owner", "admin"],
+      requires: "auditLog",
+    },
   ],
 };
 

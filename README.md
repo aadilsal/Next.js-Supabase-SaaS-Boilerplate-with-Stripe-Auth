@@ -1,43 +1,159 @@
+<div align="center">
+
 # Next.js & Supabase SaaS Boilerplate with Stripe Auth
 
-**Ship your SaaS in a weekend, not in two months.** A production-ready starter kit with auth, subscriptions, teams, emails and an admin panel already wired up, so you can start on the part that's actually your product.
+### Launch your SaaS this weekend, not in two months.
 
-![Next.js](https://img.shields.io/badge/Next.js-App_Router-black?logo=next.js)
+Auth, Stripe subscriptions, multi-tenant teams, transactional emails and an admin panel, already wired together and secured.<br/>
+Skip 4–6 weeks of setup and start building the part that's actually your product.
+
+![Next.js 16](https://img.shields.io/badge/Next.js_16-App_Router-black?logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-Postgres_+_RLS-3ECF8E?logo=supabase&logoColor=white)
-![Stripe](https://img.shields.io/badge/Stripe-Billing-635BFF?logo=stripe&logoColor=white)
+![Stripe](https://img.shields.io/badge/Stripe-Subscriptions-635BFF?logo=stripe&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)
 ![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-components-000000)
 
+**[Get the boilerplate](#-get-it)** · **[See what's inside](#-everything-you-need-on-day-one)** · **[Quick start](#-up-and-running-in-15-minutes)**
+
+</div>
+
 ---
 
-## ✨ What's included
+## 😩 The problem
 
-| | Feature | Details |
-|---|---|---|
-| 🔐 | **Authentication** | Email + password, Google OAuth, magic links, password reset. Secure cookie sessions with `@supabase/ssr` |
-| 💳 | **Stripe billing** | Monthly, yearly **and** one-time/lifetime pricing. Hosted Checkout, Customer Portal, signature-verified idempotent webhooks |
-| 👥 | **Teams & roles** | Multi-tenant from day one: create teams, invite by email, owner / admin / member roles, team switcher |
-| 🛡️ | **Row Level Security** | Every table is protected in Postgres, with automated tests proving tenants can't see each other's data |
-| 🧭 | **Dashboard shell** | Responsive collapsible sidebar, profile & security settings, light/dark mode, built with shadcn/ui |
-| 🛠️ | **Admin panel** | Platform-wide view of users and teams, hidden from everyone except admins |
-| ✉️ | **Transactional emails** | Welcome, team invite, password reset, magic link. React Email templates sent through Resend |
-| 🚀 | **Marketing site** | Landing page, pricing table driven by your billing config, FAQ, SEO metadata |
+Every SaaS needs the same foundation before it can do anything useful: sign-up and login, password resets, a billing system that doesn't double-charge, teams with roles and invitations, emails that actually arrive, and a database that never leaks one customer's data to a
 
-## 🧱 Tech stack
+Building that properly takes **4–6 weeks**. Building it badly costs you customers.
 
-**Next.js** (App Router, Server Components, Server Actions) · **TypeScript** · **Tailwind CSS** · **shadcn/ui** · **Supabase** (Auth, Postgres, RLS) · **Stripe** · **Resend** + **React Email** · **Zod** · **Vitest** · **Playwright**
+## ✅ The solution
 
-## ⚡ Quick start
+This boilerplate is that foundation, done properly. Clone it, add your keys and you have a working, secure SaaS. Then spend your time on the feature your customers are paying for.
 
-**Prerequisites:** Node.js 20+, pnpm, Docker (for local Supabase), the [Supabase CLI](https://supabase.com/docs/guides/cli) and the [Stripe CLI](https://docs.stripe.com/stripe-cli).
+| Without this boilerplate | With it |
+|---|---|
+| A week fighting OAuth redirects and session cookies | Email + password, Google and magic links, working on the first run |
+| Stripe webhooks that break when events arrive twice or out of order | Signed, idempotent webhooks that re-sync from Stripe on every event |
+| `WHERE user_id = ...` scattered through your code, one bug away from a data leak | Postgres Row Level Security on every table, with pgTAP tests |
+| Bolting on teams later and rewriting every query | Multi-tenant from day one: teams, roles, invitations |
+| Weeks of UI work for settings, billing and admin pages | A polished, accessible dashboard you just rebrand |
+
+---
+
+## 🎁 Everything you need on day one
+
+### 🔐 Authentication that just works
+- Email + password, **Google OAuth** and **magic links**, plus password reset and email confirmation
+- Secure cookie sessions with `@supabase/ssr`, verified on the server for every request
+- Open-redirect protection, rate-limited auth emails, "sign out everywhere" and account deletion
+
+### 💳 Stripe billing for every pricing model
+- **Monthly, yearly and one-time/lifetime** plans from a single config file
+- Hosted Stripe Checkout and the **Customer Portal**, so customers upgrade, update cards and download invoices themselves
+- Webhooks with signature verification, **idempotency** and automatic retry handling. Refunds remove access automatically
+- Plan **entitlements and seat limits** you can check anywhere: `hasEntitlement(team, "api_access")`
+- **Live product catalog**: Stripe products and prices synced into your database, so the pricing page always shows real prices in any currency, and archived prices can't be bought
+
+### 👥 B2B multi-tenancy built in
+- Teams with **owner / admin / member** roles and a team switcher
+- Email invitations with hashed, single-use links that expire after 7 days
+- Database-enforced rules: a team can never lose its last owner, and admins can't remove owners
+- Every user gets a personal workspace, so B2C apps work out of the box too
+
+### 🛡️ Security you can show your customers
+- **Row Level Security on every table.** Tenants can't see each other's data even if your app code has a bug
+- Service-role access limited to the webhook and admin panel
+- Strict Zod validation on every Server Action, with friendly errors and no leaked stack traces
+- Out-of-scope teams return **404, not 403**, so team slugs can't be discovered by guessing
+
+### 🧭 A dashboard your users will like
+- Collapsible sidebar, team switcher, plan badge and user menu built on **shadcn/ui**
+- Team settings, members, invitations, billing, profile and security pages
+- **Light and dark mode**, keyboard accessible and responsive down to 360px
+- Loading skeletons, empty states and error pages included
+
+### 🛠️ Admin panel
+- Platform-wide stats, user and team search, ban and unban
+- Platform-wide **audit log** and **application error log** viewers
+- Hidden from everyone else (non-admins get a 404)
+- Grant access with one command: `pnpm admin:grant you@company.com`
+
+### 📊 Audit logs & production monitoring
+- **Tamper-proof audit log** of every sign-in, failed sign-in, password change, team change, invitation, role change, purchase and refund, with who, when, IP address and user agent
+- Team owners see their team's audit log, and every user sees their own **recent activity**, so suspicious logins are easy to spot
+- **Structured JSON logging** with warnings and errors stored in your database, plus a viewer in the admin panel
+- **Sentry** error tracking and performance tracing for browser, server and edge. Add a DSN and it's on
+- Built-in retention function to purge old logs on a schedule
+
+### ✉️ Transactional emails
+- Welcome, team invitation, confirmation, magic link and password reset
+- **React Email** templates sent through **Resend**, branded from one config file
+- No email provider yet? Emails are printed to the console so every flow still works
+
+### 🚀 Marketing site included
+- Landing page, pricing page (driven by your billing config), FAQ, legal pages
+- SEO metadata, sitemap and robots.txt
+- Every word of landing page copy lives in one config file
+
+---
+
+## 🎨 Make it yours in minutes
+
+No digging through components. Everything you customize lives in `src/config/`:
+
+| Change | File |
+|---|---|
+| Product name, URLs, support email, company details | `src/config/site.ts` |
+| Turn Google login, magic links, teams, billing, admin or the landing page on/off | `src/config/features.ts` |
+| Plans, prices, entitlements, seat limits, trial length | `src/config/billing.ts` |
+| Landing page copy: hero, features, FAQ, CTA | `src/config/marketing.ts` |
+| Sidebar navigation | `src/config/navigation.ts` |
+| Log levels, Sentry sampling, audit log, retention | `src/config/observability.ts` |
+| Brand colors and corner radius | `src/app/globals.css` |
+| Logo and fonts | `src/components/shared/logo.tsx`, `src/app/layout.tsx` |
+
+Building a single-user app? Set `teams.enabled: false`. Don't need billing yet? `billing: false`. The UI adapts automatically.
+
+Step-by-step recipes for rebranding, adding plans, gating features and adding modules: **[docs/customization.md](docs/customization.md)**.
+
+---
+
+## 🧱 Built on the stack developers are hiring for
+
+| Layer | Technology |
+|---|---|
+| Framework | **Next.js 16** (App Router, Server Components, Server Actions) + **TypeScript** strict |
+| UI | **Tailwind CSS v4** + **shadcn/ui** (Radix) |
+| Database & auth | **Supabase** (Postgres, Auth, Row Level Security) |
+| Payments | **Stripe** (Checkout, Customer Portal, webhooks) |
+| Email | **Resend** + **React Email** |
+| Monitoring | **Sentry** + structured logs in Postgres |
+| Forms & validation | **react-hook-form** + **Zod** |
+| Testing | **Vitest**, **Playwright**, **pgTAP** |
+
+No ORM, no extra state library, no API layer to learn. Fewer moving parts means fewer things to break.
+
+## 🧑‍💻 Code you can actually read
+
+You'll read and change every file, so we wrote it for you, not for us:
+
+- **One folder per feature** (`auth`, `teams`, `billing`, `account`, `admin`), each with the same `schemas / queries / actions / components` shape. Learn one and you know them all.
+- **Comments explain why**, not what.
+- **Documented architecture**: a one-page list of security rules, a full design doc and a design system guide.
+- **AI-assistant ready**: ships with [`AGENTS.md`](AGENTS.md) and [`CLAUDE.md`](CLAUDE.md), so Claude Code, Cursor, Codex and Copilot follow the project's conventions and security rules from the first prompt.
+
+---
+
+## ⚡ Up and running in 15 minutes
+
+**You'll need:** Node.js 20.9+, pnpm and Docker. For billing, also the [Stripe CLI](https://docs.stripe.com/stripe-cli).
 
 ```bash
 # 1. Install
 pnpm install
 cp .env.example .env.local
 
-# 2. Start local Supabase (Postgres, Auth, local email inbox).
+# 2. Start local Supabase (Postgres, Auth and a local email inbox).
 #    Copy the printed API URL, anon key and service_role key into .env.local.
 pnpm db:start
 pnpm db:reset          # apply migrations + seed demo accounts
@@ -46,55 +162,65 @@ pnpm db:reset          # apply migrations + seed demo accounts
 pnpm dev
 
 # 4. (Optional) Billing: add Stripe test keys + price IDs to .env.local, then
+pnpm stripe:sync       # copy your Stripe products and prices into the database
 pnpm stripe:listen     # copy the printed whsec_… into STRIPE_WEBHOOK_SECRET
 ```
 
-Open <http://localhost:3000> and sign in with a seeded account (password `password123`):
-`owner@example.com` (team owner), `member@example.com` (team member) or `admin@example.com` (platform admin).
-Emails sent by Supabase show up in the local inbox at <http://localhost:54324>. App emails are printed to the console until you set `RESEND_API_KEY`.
+Open <http://localhost:3000> and sign in with a demo account (password `password123`):
 
-The full step-by-step guide, including creating Stripe products, setting up Google OAuth and deploying to Vercel, is in **[docs/](docs/README.md)**.
-
-## 🎨 Make it yours
-
-Rebranding takes minutes and touches only a few files:
-
-| Change | File |
+| Account | Role |
 |---|---|
-| Product name, URLs, support email | `src/config/site.ts` |
-| Plans, prices, feature limits | `src/config/billing.ts` |
-| Colors, radius, fonts | `src/app/globals.css` |
-| Sidebar navigation | `src/config/navigation.ts` |
-| Logo & favicon | `public/` |
+| `owner@example.com` | Owner of the "Acme Inc" team |
+| `member@example.com` | Member of "Acme Inc" |
+| `admin@example.com` | Platform admin (can open `/admin`) |
 
-## 📁 Project structure
-
-```
-src/
-├── app/            # Routes: (marketing), (auth), (app)/dashboard/[teamSlug], admin, api/webhooks
-├── features/       # One folder per domain: auth, teams, billing, account, admin, email
-├── components/     # ui/ (shadcn), shared/ (AppShell, TextField, …), marketing/
-├── config/         # site, features, billing, marketing, navigation: everything you customize
-└── lib/            # Supabase clients, Stripe, safe Server Action wrapper
-supabase/           # migrations, RLS tests, auth email templates, seed
-emails/             # React Email templates
-```
+Supabase emails land in the local inbox at <http://localhost:54324>.
 
 ## 📚 Documentation
 
-- [Docs index](docs/README.md)
-- [Architecture essentials](docs/architecture-essentials.md): the rules that keep your app secure
-- [Architecture](docs/architecture.md): auth, teams, schema, RLS, billing and email in depth
-- [Design system](docs/design.md): layouts, tokens, components, accessibility
-
-## 🤖 AI-assistant ready
-
-The repo ships with [`AGENTS.md`](AGENTS.md) and [`CLAUDE.md`](CLAUDE.md), so Claude Code, Cursor, Codex and Copilot follow its conventions and security rules from the first prompt.
-
-## 📄 License
-
-Sold under a one-time **lifetime license**: unlimited personal and commercial projects. You may not resell or redistribute the boilerplate itself. See [`LICENSE`](LICENSE) for full terms.
+| Guide | What's in it |
+|---|---|
+| [Customization](docs/customization.md) | Rebrand, toggle features, change plans, add modules |
+| [Architecture essentials](docs/architecture-essentials.md) | The security rules on one page |
+| [Architecture](docs/architecture.md) | Auth, teams, schema, RLS, billing and email in depth |
+| [Design system](docs/design.md) | Layouts, design tokens, components, accessibility |
 
 ---
 
-Built by **TechVersa**.
+## 🙋 FAQ
+
+**Who is this for?**
+Solo developers, indie hackers and agencies who want to launch a SaaS without rebuilding the same foundation, and non-technical founders handing a solid base to a freelancer.
+
+**Can I use it for client projects?**
+Yes. The license covers unlimited personal and commercial projects.
+
+**Do I need to use teams and billing?**
+No. Turn either off in `src/config/features.ts` and the UI adapts.
+
+**Where can I host it?**
+Vercel + Supabase Cloud is the recommended setup, but any Node.js host works.
+
+**Is it secure?**
+Data isolation is enforced by Postgres Row Level Security, not just app code. Payments are handled entirely by Stripe-hosted pages, so card data never touches your server.
+
+---
+
+## 🛒 Get it
+
+One payment. **Lifetime access** to the code and all future updates.
+
+<!-- TODO: add the Gumroad product link -->
+**Available on Gumroad.**
+
+## 📄 License
+
+Sold under a one-time **lifetime license**: unlimited personal and commercial projects. You may not resell or redistribute the boilerplate itself as a template or starter kit.
+
+---
+
+<div align="center">
+
+Built by **TechVersa**
+
+</div>

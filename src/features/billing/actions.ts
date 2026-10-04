@@ -3,6 +3,7 @@
 import { billingConfig, findPlanByPriceId } from "@/config/billing";
 import { teamPath } from "@/config/navigation";
 import { siteConfig } from "@/config/site";
+import { recordAuditEvent } from "@/features/audit/record";
 import { ActionError, teamAction } from "@/lib/safe-action";
 import { getStripe, isBillingEnabled } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -53,8 +54,17 @@ export const createCheckoutSession = teamAction(
   async ({ input, team, user, supabase }) => {
     if (!isBillingEnabled()) throw new ActionError("Billing isn't set up yet.");
 
+    // The price must be configured in src/config/billing.ts...
     const match = findPlanByPriceId(input.priceId);
     if (!match) throw new ActionError("That plan is no longer available.");
+
+    // ...and not archived in Stripe (when the catalog has synced it).
+    const { data: livePrice } = await supabase
+      .from("prices")
+      .select("active")
+      .eq("id", input.priceId)
+      .maybeSingle();
+    if (livePrice && !livePrice.active) throw new ActionError("That plan is no longer available.");
 
     const current = await getTeamEntitlements(team.id);
     if (current.source === "lifetime") {
@@ -88,6 +98,14 @@ export const createCheckoutSession = teamAction(
     });
 
     if (!session.url) throw new ActionError("Couldn't start checkout. Please try again.");
+
+    await recordAuditEvent({
+      action: "billing.checkout_started",
+      actor: user,
+      teamId: team.id,
+      target: { type: "checkout_session", id: session.id },
+      metadata: { plan: match.plan.id, priceId: input.priceId, interval: match.price.interval },
+    });
     return { url: session.url };
   },
 );
@@ -96,7 +114,7 @@ export const createCheckoutSession = teamAction(
 export const createPortalSession = teamAction(
   portalSchema,
   { roles: ["owner"] },
-  async ({ team, supabase }) => {
+  async ({ team, user, supabase }) => {
     if (!isBillingEnabled()) throw new ActionError("Billing isn't set up yet.");
 
     const { data: customer } = await supabase
@@ -110,6 +128,8 @@ export const createPortalSession = teamAction(
       customer: customer.stripe_customer_id,
       return_url: billingPageUrl(team),
     });
+
+    await recordAuditEvent({ action: "billing.portal_opened", actor: user, teamId: team.id });
     return { url: session.url };
   },
 );

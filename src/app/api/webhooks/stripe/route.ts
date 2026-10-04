@@ -1,5 +1,6 @@
 import { handleStripeEvent } from "@/features/billing/webhooks/handlers";
 import { serverEnv } from "@/env";
+import { logger } from "@/lib/logger";
 import { getStripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -15,7 +16,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export async function POST(request: Request) {
   const { STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } = serverEnv();
   if (!STRIPE_SECRET_KEY || !STRIPE_WEBHOOK_SECRET) {
-    console.error("[stripe] STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are not set.");
+    logger.error("stripe.webhook_not_configured", {
+      message: "STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET are not set.",
+    });
     return new Response("Billing is not configured", { status: 500 });
   }
 
@@ -29,7 +32,7 @@ export async function POST(request: Request) {
   try {
     event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);
   } catch (error) {
-    console.warn("[stripe] Invalid webhook signature:", (error as Error).message);
+    logger.warn("stripe.webhook_invalid_signature", { error });
     return new Response("Invalid signature", { status: 400 });
   }
 
@@ -43,18 +46,24 @@ export async function POST(request: Request) {
     if (insertError.code === "23505") {
       return Response.json({ received: true, duplicate: true });
     }
-    console.error("[stripe] Could not record event:", insertError);
+    logger.error("stripe.webhook_record_failed", { error: insertError, eventId: event.id });
     return new Response("Database error", { status: 500 });
   }
 
+  const startedAt = Date.now();
   try {
     await handleStripeEvent(event, { stripe, admin });
   } catch (error) {
-    console.error(`[stripe] Failed to handle ${event.type} (${event.id}):`, error);
+    logger.error("stripe.webhook_failed", { error, eventId: event.id, eventType: event.type });
     // Forget the event so Stripe's automatic retry gets processed.
     await admin.from("stripe_events").delete().eq("id", event.id);
     return new Response("Webhook handler failed", { status: 500 });
   }
 
+  logger.info("stripe.webhook_processed", {
+    eventId: event.id,
+    eventType: event.type,
+    durationMs: Date.now() - startedAt,
+  });
   return Response.json({ received: true });
 }

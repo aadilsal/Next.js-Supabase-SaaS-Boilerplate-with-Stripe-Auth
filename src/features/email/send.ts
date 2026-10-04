@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { Resend } from "resend";
 import { siteConfig } from "@/config/site";
 import { serverEnv } from "@/env";
+import { logger } from "@/lib/logger";
 import TeamInviteEmail from "../../../emails/team-invite";
 import WelcomeEmail from "../../../emails/welcome";
 
@@ -28,7 +29,10 @@ export async function sendEmail({
   const { RESEND_API_KEY, EMAIL_FROM } = serverEnv();
 
   if (!RESEND_API_KEY) {
-    console.info(`[email] RESEND_API_KEY is not set. Would have sent "${subject}" to ${to}.`);
+    logger.info("email.skipped_no_provider", {
+      message: `RESEND_API_KEY is not set. Would have sent "${subject}".`,
+      to,
+    });
     return;
   }
 

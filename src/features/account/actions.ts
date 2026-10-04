@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { recordAuditEvent } from "@/features/audit/record";
 import { ActionError, authAction, toActionError } from "@/lib/safe-action";
 import { getStripe, isBillingEnabled } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -17,18 +18,21 @@ export const updateProfile = authAction(updateProfileSchema, async ({ input, use
 
   // Keep auth metadata in sync (used as the sender name on invitations).
   await supabase.auth.updateUser({ data: { full_name: input.fullName } });
+  await recordAuditEvent({ action: "account.profile_updated", actor: user });
   revalidatePath("/", "layout");
 });
 
-export const changePassword = authAction(changePasswordSchema, async ({ input, supabase }) => {
+export const changePassword = authAction(changePasswordSchema, async ({ input, user, supabase }) => {
   const { error } = await supabase.auth.updateUser({ password: input.password });
   if (error) {
     if (error.code === "same_password") throw new ActionError("Choose a different password.");
     throw new ActionError(error.message);
   }
+  await recordAuditEvent({ action: "auth.password_changed", actor: user, metadata: { via: "account_settings" } });
 });
 
-export const signOutEverywhere = authAction(z.object({}), async ({ supabase }) => {
+export const signOutEverywhere = authAction(z.object({}), async ({ user, supabase }) => {
+  await recordAuditEvent({ action: "auth.signed_out_everywhere", actor: user });
   await supabase.auth.signOut({ scope: "global" });
   redirect("/sign-in");
 });
@@ -84,6 +88,9 @@ export const deleteAccount = authAction(deleteAccountSchema, async ({ user, supa
     const { error: deleteTeamsError } = await admin.from("teams").delete().in("id", teamsToDelete);
     if (deleteTeamsError) throw toActionError(deleteTeamsError);
   }
+
+  // Recorded before deletion; the entry is kept (audit logs have no foreign keys).
+  await recordAuditEvent({ action: "account.deleted", actor: user, metadata: { deletedTeams: teamsToDelete } });
 
   const { error: deleteUserError } = await admin.auth.admin.deleteUser(user.id);
   if (deleteUserError) throw toActionError(deleteUserError);

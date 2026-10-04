@@ -100,10 +100,11 @@ select throws_ok(
   $$ select public.accept_invitation('carol-token-0123456789') $$,
   'P0001', 'INVITATION_ALREADY_USED', 'invitations are single-use'
 );
+-- RLS silently filters the update to zero rows for members.
+update public.teams set name = 'Hacked' where slug = 'alice-co';
 select is(
-  (with updated as (update public.teams set name = 'Hacked' where slug = 'alice-co' returning 1)
-   select count(*)::int from updated),
-  0, 'members cannot rename the team'
+  (select name from public.teams where slug = 'alice-co'),
+  'Alice Co', 'members cannot rename the team'
 );
 
 -- -----------------------------------------------------------------------------

@@ -15,15 +15,17 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
-    "db:types": "supabase gen types typescript --local --schema public > src/types/database.ts",
+    "db:types": "supabase gen types typescript --local --schema public > src/types/database.generated.ts",
     "db:push": "supabase db push",
     "email:dev": "email dev --dir emails --port 3001",
     "admin:grant": "tsx --env-file=.env.local scripts/grant-admin.ts",
-    "stripe:listen": "stripe listen --forward-to localhost:3000/api/webhooks/stripe"
+    "stripe:listen": "stripe listen --forward-to localhost:3000/api/webhooks/stripe",
+    "stripe:sync": "tsx --env-file=.env.local scripts/stripe-sync.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
     "@react-email/components": "^1.0.12",
+    "@sentry/nextjs": "^11.4.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
     "class-variance-authority": "^0.7.1",

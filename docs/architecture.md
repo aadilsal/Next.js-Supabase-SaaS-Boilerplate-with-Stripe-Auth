@@ -117,13 +117,14 @@ Rules:
 
 ## 3. Supabase clients
 
-There are exactly three ways to talk to Supabase. Picking the wrong one is the most common security bug in Supabase apps, so each lives in its own file:
+There are exactly four ways to talk to Supabase. Picking the wrong one is the most common security bug in Supabase apps, so each lives in its own file:
 
 | File | Key used | RLS | Use for |
 |---|---|---|---|
 | `lib/supabase/client.ts` | anon / publishable key | ✅ enforced | Client Components (rare: realtime, auth UI) |
 | `lib/supabase/server.ts` | anon / publishable key + user cookie | ✅ enforced | **Default.** Server Components, Server Actions, Route Handlers |
-| `lib/supabase/admin.ts` | service role / secret key | ❌ **bypassed** | Stripe webhooks, admin panel, system jobs only |
+| `lib/supabase/public.ts` | anon / publishable key, **no cookies** | ✅ enforced (as `anon`) | Public data on cached pages (the price catalog) |
+| `lib/supabase/admin.ts` | service role / secret key | ❌ **bypassed** | Stripe webhooks, admin panel, audit/app log writes, system jobs only |
 
 `admin.ts` starts with `import "server-only"` so the build fails if it ever ends up in a client bundle.
 
@@ -192,6 +193,8 @@ auth.users ─1:1─ profiles
                                                 ├─< subscriptions
                                                 └─< purchases
 stripe_events (standalone, webhook idempotency)
+products ─< prices (public catalog, synced from Stripe)
+audit_logs, app_logs (standalone, no foreign keys: they outlive users and teams)
 ```
 
 | Table | Key columns | Notes |
@@ -204,6 +207,10 @@ stripe_events (standalone, webhook idempotency)
 | `subscriptions` | `id` (Stripe sub ID), `team_id`, `status`, `price_id`, `interval`, `current_period_end`, `cancel_at_period_end` | Written by the webhook only |
 | `purchases` | `id` (Stripe Checkout Session ID), `team_id`, `price_id`, `amount_total`, `currency`, `status` | One-time / lifetime payments. Written by the webhook only |
 | `stripe_events` | `id` (Stripe event ID), `type`, `processed_at` | No RLS policies, so only the service role can access it |
+| `products` | `id` (Stripe product ID), `active`, `name`, `description`, `metadata` | Public catalog. Written by the webhook and `pnpm stripe:sync` only |
+| `prices` | `id` (Stripe price ID), `product_id`, `active`, `currency`, `unit_amount`, `type`, `interval`, `interval_count`, `trial_period_days` | Public catalog. Same writers as `products` |
+| `audit_logs` | `id`, `created_at`, `team_id`, `actor_id`, `actor_email`, `action`, `target_type`, `target_id`, `metadata`, `ip_address`, `user_agent` | Append-only: a trigger rejects every `UPDATE`. Written only by `recordAuditEvent()` (service role) |
+| `app_logs` | `id`, `created_at`, `level`, `event`, `message`, `context`, `error`, `user_id`, `team_id`, `environment` | Warnings and errors from the logger. Service role only |
 
 ### RLS pattern
 
@@ -222,6 +229,9 @@ public.has_team_role(team_id uuid, roles public.team_role[]) returns boolean
 | `invitations` | `owner`/`admin` of the team | `owner`/`admin`; acceptance only through `accept_invitation()` |
 | `billing_customers`, `subscriptions`, `purchases` | `is_team_member(team_id)` | **none**: written by the service role from the webhook |
 | `stripe_events` | none | none |
+| `products`, `prices` | everyone, including `anon` | **none**: service role only |
+| `audit_logs` | the actor's own entries; all entries of teams where the user is `owner`/`admin` | **none**: service role inserts; `UPDATE` is blocked for everyone by a trigger |
+| `app_logs` | none (no grants) | none: service role only |
 
 Every policy that has to pass is covered by a test in `supabase/tests/`, and so is every policy that has to fail (see §11).
 
@@ -278,12 +288,27 @@ Stripe is the source of truth for **prices and payment state**. `billing.ts` is 
 | `customer.subscription.created` / `.updated` / `.deleted` / `.paused` / `.resumed` | Re-fetch and upsert `subscriptions` |
 | `invoice.paid` / `invoice.payment_failed` | Re-sync the invoice's subscription (status becomes `active` / `past_due`) |
 | `charge.refunded` | Full refund of a one-time payment sets the purchase to `refunded`, which removes lifetime access |
+| `product.*` / `price.*` (created, updated, deleted) | Re-fetch and upsert `products` / `prices`. Deleted objects are marked inactive. Revalidates `/` and `/pricing` |
+
+Billing events also write audit entries: `billing.subscription_updated`, `billing.purchase_completed`, `billing.purchase_refunded`.
 
 The list lives in `HANDLED_EVENTS` in `src/features/billing/webhooks/handlers.ts`. If a handler throws, the event row is deleted and a `500` is returned, so Stripe's automatic retry is processed rather than skipped as a duplicate.
 
 4. Return `200`. Unknown event types also return `200`, so Stripe stops retrying them.
 
 Handlers **re-fetch** the object from the Stripe API before writing (instead of trusting the event payload order). Stripe can deliver events out of order, so handlers must not assume a sequence.
+
+### Product catalog
+
+The `products` and `prices` tables are a public copy of your Stripe catalog:
+
+- **Webhooks** keep it current (`product.*`, `price.*`). A price event also syncs its product first, because events can arrive in any order.
+- **`pnpm stripe:sync`** backfills it. Run it once after setting up Stripe and after switching between test and live mode, because webhooks only fire on *changes*.
+- **The pricing table** shows the live `unit_amount` and currency from `prices` (handling zero-decimal currencies like JPY). If a price isn't in the catalog yet, it falls back to `amount` in `config/billing.ts`. Archived prices show "No longer available".
+- **Checkout** rejects any price that is archived in the catalog, on top of requiring it to be configured in `config/billing.ts`.
+- `/` and `/pricing` are statically cached (`revalidate = 3600`) and refreshed immediately by the webhook through `revalidatePath`.
+
+`config/billing.ts` still decides **what each price unlocks** (entitlements, seat limits). The catalog only decides **what it costs**.
 
 ---
 
@@ -328,7 +353,9 @@ The wrapper:
 2. Gets the user with `getUser()` (`authAction` / `teamAction`; `publicAction` skips this).
 3. For team actions, loads the membership and checks the role.
 4. Runs the handler and returns `{ ok: true, data }`, or `{ ok: false, error }` for expected failures (thrown as `ActionError`). Known database errors (e.g. `TEAM_NEEDS_AN_OWNER`) are mapped to friendly messages by `toActionError()`.
-5. Logs unexpected errors on the server and returns a generic message. Stack traces and database errors never reach the client.
+5. Logs unexpected errors through `logger.error()` (console + `app_logs` + Sentry) and returns a generic message. Stack traces and database errors never reach the client.
+
+Successful actions that matter for security or billing call `recordAuditEvent()` (see §15).
 
 Pages use `error.tsx` and `not-found.tsx` boundaries. A missing team or a team the user isn't part of returns a 404, never a 403, so team slugs can't be enumerated.
 
@@ -338,10 +365,10 @@ Pages use `error.tsx` and `not-found.tsx` boundaries. A missing team or a team t
 
 | Layer | Tool | What's covered |
 |---|---|---|
-| Unit | Vitest | `features/*/lib`, entitlement resolution, Zod schemas, redirect allowlist |
-| Database / RLS | Supabase test DB (pgTAP via `supabase test db`) | For each table: members can read their team and outsiders can't. Role-gated writes. Users can't change `is_platform_admin`. `accept_invitation` covering expired, wrong-email and reused tokens |
-| Webhook | Vitest + Stripe fixture events | Signature rejection, idempotency, each handled event type |
-| E2E | Playwright | Sign up → dashboard; invite → accept; checkout (Stripe test mode) → plan shows Pro; admin route is 404 for non-admins |
+| Unit | Vitest | `features/*/lib`, entitlement resolution, catalog mapping and display prices, logger, redirect allowlist |
+| Database / RLS | Supabase test DB (pgTAP via `supabase test db`) | For each table: members can read their team and outsiders can't. Role-gated writes. Users can't change `is_platform_admin`. `accept_invitation` covering expired, wrong-email and reused tokens. Catalog is public and read-only. Audit logs can't be forged, edited or deleted; app logs and purging are service-role only |
+| Webhook | Vitest + Stripe-signed test payloads | Signature rejection, idempotency, retry after a failed handler |
+| E2E | Playwright | Sign-in → dashboard; wrong password rejected; sign-in appears in "Recent activity"; admins can open audit and app logs; `/admin` is 404 for non-admins |
 
 CI (GitHub Actions) runs `typecheck`, `lint`, `test`, `supabase test db` and the Playwright smoke suite on every PR.
 
@@ -362,6 +389,8 @@ CI (GitHub Actions) runs `typecheck`, `lint`, `test`, `supabase test db` and the
 | `NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTHLY` / `_YEARLY` / `NEXT_PUBLIC_STRIPE_PRICE_LIFETIME` | public | Referenced from `config/billing.ts`. Price IDs are not secret, and the pricing table needs them in the browser |
 | `RESEND_API_KEY` | **server only** | |
 | `EMAIL_FROM` | server | e.g. `Acme <hello@acme.com>` |
+| `NEXT_PUBLIC_SENTRY_DSN` | public | Turns Sentry on. DSNs are public by design. Empty = off |
+| `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | **build-time only** | Upload source maps for readable stack traces. Optional |
 
 Google OAuth credentials go in the Supabase dashboard (and in `supabase/config.toml` for local development), not in the Next.js env.
 
@@ -382,8 +411,9 @@ pnpm dev
 **Production**
 1. Create a Supabase project and run `supabase link` then `supabase db push`.
 2. In Supabase, configure the Google provider, the custom SMTP (Resend), the auth email templates and the redirect URLs.
-3. Create the Stripe products and prices, turn on the Customer Portal and add a webhook endpoint for the events in §7.
+3. Create the Stripe products and prices, turn on the Customer Portal and add a webhook endpoint for the events in §7. Run `pnpm stripe:sync` (with production env vars) to fill the catalog.
 4. Deploy to Vercel with the env vars from §12.
+5. Optional: create a Sentry project and set `NEXT_PUBLIC_SENTRY_DSN`. Schedule `purge_old_logs()` with pg_cron (§15).
 
 ---
 
@@ -399,3 +429,41 @@ pnpm dev
 | Plans in `config/billing.ts` | Syncing products into the DB | One file to edit, readable, no sync job |
 | Supabase sends auth emails; Resend sends app emails | Routing all mail through a Send Email Hook | Fewer moving parts for buyers to set up |
 | No ORM | Drizzle / Prisma | Supabase client + generated types fit RLS naturally and mean one less tool to learn |
+| *(Revisits "Plans in config")* Add a `products`/`prices` catalog synced from Stripe, keeping entitlements in config | Catalog only in config; everything in the DB | Live prices and currencies without redeploying, archived prices can't be bought, and what a plan unlocks stays in one readable file |
+| Sentry for errors and tracing, plus a small JSON logger that stores warnings and errors in `app_logs` | OpenTelemetry; PostHog; console only | Sentry has first-class Next.js support and works with zero config until a DSN is set. DB-stored logs give admins a view without a third-party account |
+| Append-only `audit_logs` written only through the service role, with no foreign keys | Audit via Postgres triggers on every table | Explicit `recordAuditEvent()` calls capture intent (who, why, IP) that triggers can't see, and entries survive deleted users and teams |
+
+---
+
+## 15. Observability & audit log
+
+Three separate streams, each with one job:
+
+| Stream | Answers | Where it goes | Who sees it |
+|---|---|---|---|
+| **Audit log** (`recordAuditEvent()`) | *Who did what, when, to which team?* | `audit_logs` table | Team owners/admins (`/dashboard/[team]/settings/audit-log`), each user (*Recent activity* on `/account/security`), platform admins (`/admin/audit-logs`) |
+| **Application logs** (`logger.*`) | *What went wrong or looks suspicious?* | One JSON line per entry on stdout. `warn`+ also goes to `app_logs`, `error` also to Sentry | Platform admins (`/admin/logs`), your log drain (Vercel, Datadog…) |
+| **Sentry** | *Which exceptions are happening, and how slow are requests?* | sentry.io | Your team |
+
+**Audit log**
+- Event names live in `src/features/audit/lib/events.ts` (`"area.what_happened"`, enforced by a DB check). Add new ones there.
+- Recorded events: sign-in (password, email link, OAuth), **failed sign-ins**, sign-up, password reset/change, sign out everywhere, profile updates, account deletion, every team and membership change, checkout started, portal opened, subscription changes, purchases and refunds, and admin bans.
+- Each entry stores the actor, team, target, metadata, client IP and user agent. Never put secrets or payment details in `metadata`.
+- **Tamper-resistant:** users have no insert/update/delete grants, and a trigger blocks `UPDATE` even for the service role. Entries have no foreign keys, so they survive deleted users and teams.
+- `recordAuditEvent()` never throws. A failed write is logged as `audit.write_failed` instead of failing the user's action.
+
+**Logger** (`src/lib/logger.ts`)
+- `logger.info("team.created", { userId, teamId })`. Pass `error` to have it serialized.
+- Database writes run in `after()`, so they never slow a response down.
+- Levels are set in `src/config/observability.ts` (`consoleLogLevel`, `databaseLogLevel`).
+- Authentication failures (`auth.sign_in_failed`, invalid email links, OAuth errors), webhook failures and invalid webhook signatures are logged as warnings or errors. Use `/admin/logs` or your log drain to watch the rates.
+
+**Sentry**
+- `src/instrumentation.ts` (server + edge), `src/instrumentation-client.ts` (browser) and `src/app/global-error.tsx`. Shared options are in `src/lib/sentry-options.ts`.
+- Off until `NEXT_PUBLIC_SENTRY_DSN` is set. `tracesSampleRate` (API latency) and optional Session Replay live in `src/config/observability.ts`.
+- `sendDefaultPii` is off, so IPs, cookies and request bodies are not sent.
+
+**Retention**
+- `public.purge_old_logs(audit_days, app_days)` deletes old entries (service role only). Schedule it with pg_cron, for example:
+  `select cron.schedule('purge-logs', '0 3 * * *', $$select public.purge_old_logs(365, 30)$$);`
+- Defaults to keep are in `observabilityConfig.retention`.

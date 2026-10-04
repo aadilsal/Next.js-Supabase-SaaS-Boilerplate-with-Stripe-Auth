@@ -3,6 +3,7 @@ import "server-only";
 import type { User } from "@supabase/supabase-js";
 import { features } from "@/config/features";
 import { sendWelcomeEmail } from "@/features/email/send";
+import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -26,6 +27,6 @@ export async function maybeSendWelcomeEmail(user: User): Promise<void> {
     const profile = data?.[0];
     if (profile) await sendWelcomeEmail({ to: user.email, name: profile.full_name });
   } catch (error) {
-    console.error("[auth] Welcome email failed:", error);
+    logger.error("auth.welcome_email_failed", { error, userId: user.id });
   }
 }

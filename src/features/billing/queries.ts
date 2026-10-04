@@ -1,8 +1,34 @@
 import "server-only";
 
 import { cache } from "react";
+import { logger } from "@/lib/logger";
+import { createPublicClient } from "@/lib/supabase/public";
 import { createClient } from "@/lib/supabase/server";
+import type { PriceCatalog } from "./lib/catalog";
 import { resolveEntitlements, type TeamEntitlements } from "./lib/entitlements";
+
+/**
+ * Live Stripe prices keyed by price ID, from the `prices` table.
+ * Returns {} if the catalog is empty or unreachable; the pricing table then
+ * falls back to the amounts in src/config/billing.ts.
+ */
+export async function getPriceCatalog(): Promise<PriceCatalog> {
+  try {
+    const { data, error } = await createPublicClient()
+      .from("prices")
+      .select("id, active, unit_amount, currency");
+    if (error) throw error;
+    return Object.fromEntries(
+      (data ?? []).map((price) => [
+        price.id,
+        { active: price.active, unitAmount: price.unit_amount, currency: price.currency },
+      ]),
+    );
+  } catch (error) {
+    logger.warn("billing.catalog_unavailable", { error });
+    return {};
+  }
+}
 
 const SUBSCRIPTION_COLUMNS =
   "id, team_id, status, price_id, interval, current_period_end, cancel_at_period_end";

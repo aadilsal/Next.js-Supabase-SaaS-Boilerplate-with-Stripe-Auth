@@ -1,13 +1,14 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
-    // Send this to your error tracker (Sentry, etc.) here.
-    console.error(error);
+    // No-op until NEXT_PUBLIC_SENTRY_DSN is set.
+    Sentry.captureException(error);
   }, [error]);
 
   return (

@@ -35,10 +35,11 @@ pnpm test             # vitest (unit + webhook route)
 pnpm test:e2e         # playwright (needs local Supabase + .env.local)
 pnpm db:start         # local Supabase in Docker (prints keys for .env.local)
 pnpm db:reset         # re-apply migrations + seed
-pnpm db:types         # regenerate src/types/database.ts
+pnpm db:types         # regenerate src/types/database.generated.ts
 pnpm db:test          # pgTAP RLS tests in supabase/tests
 pnpm email:dev        # preview React Email templates on :3001
 pnpm stripe:listen    # forward Stripe webhooks to localhost
+pnpm stripe:sync      # copy Stripe products/prices into the catalog tables
 pnpm admin:grant <email>   # make a user a platform admin
 ```
 
@@ -51,7 +52,9 @@ Before you say a task is done, run `pnpm typecheck && pnpm lint && pnpm test`. I
 - `src/components/ui/`: generated shadcn primitives. Add them with `pnpm dlx shadcn@latest add <name>` and avoid hand-editing
 - `src/components/shared/`: app-wide compositions (AppShell, PageHeader, TextField, ConfirmDialog…)
 - `src/hooks/use-action.ts`: call Server Actions from Client Components (pending state, toasts, field errors)
-- `src/config/`: `site.ts`, `features.ts`, `billing.ts`, `marketing.ts`, `navigation.ts`. Everything a buyer configures, with no logic
+- `src/config/`: `site.ts`, `features.ts`, `billing.ts`, `marketing.ts`, `navigation.ts`, `observability.ts`. Everything a buyer configures, with no logic
+- `src/lib/logger.ts`: structured server logging (console JSON, `app_logs`, Sentry). Never use `console.*` in server code
+- `src/features/audit/`: `recordAuditEvent()` and the event list in `lib/events.ts`
 - `emails/`: React Email templates (import config with relative paths, not `@/`)
 - `supabase/migrations/`: the only way the schema changes
 
@@ -64,9 +67,11 @@ Before you say a task is done, run `pnpm typecheck && pnpm lint && pnpm test`. I
 5. **Never take `team_id`, `role` or `priceId` from the client at face value.** Resolve the team from a verified membership. Validate the price against `config/billing.ts`.
 6. **Stripe webhook:** raw body + signature verification, idempotency via `stripe_events`, re-fetch objects, no ordering assumptions. Grant access only from webhook-written data, never from the success URL.
 7. **No secrets in `NEXT_PUBLIC_*`.** Add every new env var to `src/env.ts` **and** `.env.example`.
-8. **Never edit a shipped migration** and never hand-edit `src/types/database.ts`.
+8. **Never edit a shipped migration** and never hand-edit `src/types/database.generated.ts` (add aliases in `database.ts`).
 9. **Semantic Tailwind tokens only** (`bg-primary`, `text-muted-foreground`), never raw palette colors. Rebranding must only need `config/` and `globals.css`.
 10. Return **404, not 403**, for resources in teams the user doesn't belong to.
+11. **Audit security and billing changes.** After a successful action that changes access, membership, credentials or money, call `recordAuditEvent()` with a key from `features/audit/lib/events.ts`. Never put secrets or payment data in `metadata`.
+12. **Log through `logger`, not `console`.** Use `logger.warn` for suspicious or expected failures and `logger.error` for bugs (these go to Sentry). Event names are `area.what_happened`.
 
 ## Code style
 

@@ -3,7 +3,8 @@ import { StatusBadge } from "@/components/shared/badges";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AdminPagination, AdminSearch } from "@/features/admin/components/admin-table-controls";
+import { Pagination } from "@/components/shared/pagination";
+import { AdminSearch } from "@/features/admin/components/admin-table-controls";
 import { BanUserButton } from "@/features/admin/components/ban-user-button";
 import { ADMIN_PAGE_SIZE, listUsers } from "@/features/admin/queries";
 import { requirePlatformAdmin } from "@/lib/auth";
@@ -69,7 +70,7 @@ export default async function AdminUsersPage({ searchParams }: PageProps<"/admin
           </TableBody>
         </Table>
       </div>
-      <AdminPagination page={pageNumber} pageSize={ADMIN_PAGE_SIZE} total={total} query={query} />
+      <Pagination page={pageNumber} pageSize={ADMIN_PAGE_SIZE} total={total} params={{ q: query }} />
     </>
   );
 }

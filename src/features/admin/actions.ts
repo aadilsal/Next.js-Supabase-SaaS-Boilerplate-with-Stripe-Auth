@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { recordAuditEvent } from "@/features/audit/record";
 import { requirePlatformAdmin } from "@/lib/auth";
 import { ActionError, authAction, toActionError } from "@/lib/safe-action";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -19,5 +20,11 @@ export const setUserBanned = authAction(setUserBannedSchema, async ({ input, use
     ban_duration: input.banned ? "876000h" : "none",
   });
   if (error) throw toActionError(error);
+
+  await recordAuditEvent({
+    action: input.banned ? "admin.user_banned" : "admin.user_unbanned",
+    actor: user,
+    target: { type: "user", id: input.userId },
+  });
   revalidatePath("/admin/users");
 });

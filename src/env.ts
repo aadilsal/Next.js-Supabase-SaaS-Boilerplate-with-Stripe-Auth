@@ -22,6 +22,8 @@ const publicSchema = z.object({
   NEXT_PUBLIC_SITE_URL: z.url().default("http://localhost:3000"),
   NEXT_PUBLIC_SUPABASE_URL: z.url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
+  // Sentry DSNs are public by design. Leave empty to keep Sentry off.
+  NEXT_PUBLIC_SENTRY_DSN: optionalString,
 });
 
 const serverSchema = z.object({
@@ -31,6 +33,10 @@ const serverSchema = z.object({
   STRIPE_WEBHOOK_SECRET: optionalString,
   RESEND_API_KEY: optionalString,
   EMAIL_FROM: z.string().min(1).default("Acme <onboarding@resend.dev>"),
+  // Build-time only (read by next.config.ts) to upload source maps to Sentry. Optional.
+  SENTRY_ORG: optionalString,
+  SENTRY_PROJECT: optionalString,
+  SENTRY_AUTH_TOKEN: optionalString,
 });
 
 function parse<T extends z.ZodType>(schema: T, values: Record<string, unknown>): z.infer<T> {
@@ -56,6 +62,7 @@ export function publicEnv() {
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
   });
   return cachedPublic;
 }
@@ -70,6 +77,9 @@ export function serverEnv() {
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     EMAIL_FROM: process.env.EMAIL_FROM,
+    SENTRY_ORG: process.env.SENTRY_ORG,
+    SENTRY_PROJECT: process.env.SENTRY_PROJECT,
+    SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
   });
   return cachedServer;
 }

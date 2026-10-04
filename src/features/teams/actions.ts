@@ -5,8 +5,10 @@ import { redirect } from "next/navigation";
 import { features } from "@/config/features";
 import { teamPath } from "@/config/navigation";
 import { siteConfig } from "@/config/site";
+import { recordAuditEvent } from "@/features/audit/record";
 import { getTeamEntitlements } from "@/features/billing/queries";
 import { sendTeamInviteEmail } from "@/features/email/send";
+import { logger } from "@/lib/logger";
 import { ActionError, authAction, teamAction, toActionError } from "@/lib/safe-action";
 import { canChangeRole, canRemoveMember } from "./lib/permissions";
 import { generateInvitationToken } from "./lib/tokens";
@@ -24,13 +26,19 @@ import {
 
 const SLUG_TAKEN = "That URL is already taken. Try another one.";
 
-export const createTeam = authAction(createTeamSchema, async ({ input, supabase }) => {
+export const createTeam = authAction(createTeamSchema, async ({ input, user, supabase }) => {
   if (!features.teams.enabled || !features.teams.allowCreate) {
     throw new ActionError("Creating teams is disabled.");
   }
   const { data, error } = await supabase.rpc("create_team", { p_name: input.name });
   if (error) throw toActionError(error, { uniqueViolation: SLUG_TAKEN });
 
+  await recordAuditEvent({
+    action: "team.created",
+    actor: user,
+    teamId: data.id,
+    metadata: { name: data.name, slug: data.slug },
+  });
   revalidatePath("/dashboard", "layout");
   return { slug: data.slug };
 });
@@ -38,13 +46,19 @@ export const createTeam = authAction(createTeamSchema, async ({ input, supabase 
 export const updateTeam = teamAction(
   updateTeamSchema,
   { roles: ["owner", "admin"] },
-  async ({ input, team, supabase }) => {
+  async ({ input, team, user, supabase }) => {
     const { error } = await supabase
       .from("teams")
       .update({ name: input.name, slug: input.slug })
       .eq("id", team.id);
     if (error) throw toActionError(error, { uniqueViolation: SLUG_TAKEN });
 
+    await recordAuditEvent({
+      action: "team.updated",
+      actor: user,
+      teamId: team.id,
+      metadata: { before: { name: team.name, slug: team.slug }, after: { name: input.name, slug: input.slug } },
+    });
     revalidatePath("/dashboard", "layout");
     return { slug: input.slug };
   },
@@ -53,7 +67,7 @@ export const updateTeam = teamAction(
 export const deleteTeam = teamAction(
   deleteTeamSchema,
   { roles: ["owner"] },
-  async ({ team, supabase }) => {
+  async ({ team, user, supabase }) => {
     if (team.is_personal) throw new ActionError("Your personal workspace can't be deleted.");
 
     const { data: activeSubscription } = await supabase
@@ -70,6 +84,13 @@ export const deleteTeam = teamAction(
     const { error } = await supabase.from("teams").delete().eq("id", team.id);
     if (error) throw toActionError(error);
 
+    // Audit entries have no foreign key, so this survives the team's deletion.
+    await recordAuditEvent({
+      action: "team.deleted",
+      actor: user,
+      teamId: team.id,
+      metadata: { name: team.name, slug: team.slug },
+    });
     revalidatePath("/dashboard", "layout");
     redirect("/dashboard");
   },
@@ -140,10 +161,17 @@ export const inviteMember = teamAction(
         inviteUrl,
       });
     } catch (emailError) {
-      console.error("[teams] Invitation email failed:", emailError);
+      logger.error("teams.invite_email_failed", { error: emailError, teamId: team.id, userId: user.id });
       emailSent = false;
     }
 
+    await recordAuditEvent({
+      action: "team.member_invited",
+      actor: user,
+      teamId: team.id,
+      target: { type: "email", id: email },
+      metadata: { role: input.role, emailSent },
+    });
     revalidatePath(teamPath(team.slug, "/settings/members"));
     // The link is returned so owners/admins can share it manually if email isn't set up.
     return { inviteUrl, emailSent };
@@ -153,13 +181,21 @@ export const inviteMember = teamAction(
 export const revokeInvitation = teamAction(
   revokeInvitationSchema,
   { roles: ["owner", "admin"] },
-  async ({ input, team, supabase }) => {
-    const { error } = await supabase
+  async ({ input, team, user, supabase }) => {
+    const { data, error } = await supabase
       .from("invitations")
       .delete()
       .eq("id", input.invitationId)
-      .eq("team_id", team.id);
+      .eq("team_id", team.id)
+      .select("email");
     if (error) throw toActionError(error);
+
+    await recordAuditEvent({
+      action: "team.invitation_revoked",
+      actor: user,
+      teamId: team.id,
+      target: { type: "email", id: data?.[0]?.email ?? input.invitationId },
+    });
     revalidatePath(teamPath(team.slug, "/settings/members"));
   },
 );
@@ -167,7 +203,7 @@ export const revokeInvitation = teamAction(
 export const updateMemberRole = teamAction(
   updateMemberRoleSchema,
   { roles: ["owner", "admin"] },
-  async ({ input, team, role, supabase }) => {
+  async ({ input, team, role, user, supabase }) => {
     const { data: target } = await supabase
       .from("team_members")
       .select("role")
@@ -185,6 +221,14 @@ export const updateMemberRole = teamAction(
       .eq("team_id", team.id)
       .eq("user_id", input.userId);
     if (error) throw toActionError(error);
+
+    await recordAuditEvent({
+      action: "team.member_role_changed",
+      actor: user,
+      teamId: team.id,
+      target: { type: "user", id: input.userId },
+      metadata: { from: target.role, to: input.role },
+    });
     revalidatePath(teamPath(team.slug, "/settings/members"));
   },
 );
@@ -212,6 +256,14 @@ export const removeMember = teamAction(
       .eq("team_id", team.id)
       .eq("user_id", input.userId);
     if (error) throw toActionError(error);
+
+    await recordAuditEvent({
+      action: "team.member_removed",
+      actor: user,
+      teamId: team.id,
+      target: { type: "user", id: input.userId },
+      metadata: { role: target.role },
+    });
     revalidatePath(teamPath(team.slug, "/settings/members"));
   },
 );
@@ -226,15 +278,20 @@ export const leaveTeam = teamAction(leaveTeamSchema, {}, async ({ team, user, su
     .eq("user_id", user.id);
   if (error) throw toActionError(error);
 
+  await recordAuditEvent({ action: "team.member_left", actor: user, teamId: team.id });
   revalidatePath("/dashboard", "layout");
   redirect("/dashboard");
 });
 
-export const acceptInvitation = authAction(acceptInvitationSchema, async ({ input, supabase }) => {
+export const acceptInvitation = authAction(acceptInvitationSchema, async ({ input, user, supabase }) => {
   const { data: teamSlug, error } = await supabase.rpc("accept_invitation", {
     p_token: input.token,
   });
   if (error) throw toActionError(error);
+
+  // The user is a member now, so RLS lets them read the team.
+  const { data: team } = await supabase.from("teams").select("id").eq("slug", teamSlug).maybeSingle();
+  await recordAuditEvent({ action: "team.invitation_accepted", actor: user, teamId: team?.id });
 
   revalidatePath("/dashboard", "layout");
   redirect(teamPath(teamSlug));

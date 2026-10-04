@@ -6,7 +6,7 @@ import { features } from "@/config/features";
 import { CheckoutStatus } from "@/features/billing/components/checkout-status";
 import { CurrentPlanCard } from "@/features/billing/components/current-plan-card";
 import { PricingTable } from "@/features/billing/components/pricing-table";
-import { getTeamEntitlements } from "@/features/billing/queries";
+import { getPriceCatalog, getTeamEntitlements } from "@/features/billing/queries";
 import { canManageBilling } from "@/features/teams/lib/permissions";
 import { requireTeam } from "@/features/teams/queries";
 import { isBillingEnabled } from "@/lib/stripe";
@@ -39,8 +39,9 @@ export default async function BillingPage({
   }
 
   const supabase = await createClient();
-  const [entitlements, { data: customer }] = await Promise.all([
+  const [entitlements, catalog, { data: customer }] = await Promise.all([
     getTeamEntitlements(team.id),
+    getPriceCatalog(),
     supabase.from("billing_customers").select("team_id").eq("team_id", team.id).maybeSingle(),
   ]);
   const canManage = canManageBilling(team.role);
@@ -66,6 +67,7 @@ export default async function BillingPage({
       />
       {entitlements.source !== "lifetime" && (
         <PricingTable
+          catalog={catalog}
           mode={{
             kind: "app",
             teamSlug: team.slug,

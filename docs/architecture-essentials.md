@@ -37,7 +37,13 @@ The one-page version of [architecture.md](./architecture.md). If you only read o
 
 ### Data
 - [ ] Change the schema **only** through a new file in `supabase/migrations/`. Never edit a migration that has shipped.
-- [ ] Run `pnpm db:types` after every migration. `src/types/database.ts` is generated, so never hand-edit it.
+- [ ] Run `pnpm db:types` after every migration. `src/types/database.generated.ts` is generated, so never hand-edit it (add aliases in `database.ts`).
+- [ ] Audit logs are append-only and written only through `recordAuditEvent()`. Never give users write access to `audit_logs` or `app_logs`.
+
+### Observability
+- [ ] Record an audit event after every successful change to access, membership, credentials or money.
+- [ ] Use `logger` (never `console.*`) in server code: `warn` for suspicious or expected failures, `error` for bugs (sent to Sentry).
+- [ ] Never log or audit secrets, passwords, tokens or payment details.
 - [ ] Write `security definer` functions with `set search_path = ''` and schema-qualified names.
 
 ### Code
@@ -64,7 +70,9 @@ Auth:   (auth) pages → Supabase Auth → /auth/callback | /auth/confirm → se
 |---|---|
 | Rename the product, change URLs | `src/config/site.ts` |
 | Turn auth methods, teams, billing, admin or marketing on/off | `src/config/features.ts` |
-| Change plans, prices, feature gates | `src/config/billing.ts` + Stripe dashboard |
+| Change plans, prices, feature gates | `src/config/billing.ts` + Stripe dashboard (then `pnpm stripe:sync`) |
+| Logging levels, Sentry sampling, audit log on/off, retention | `src/config/observability.ts` |
+| Add an audit event | `src/features/audit/lib/events.ts`, then call `recordAuditEvent()` |
 | Change landing page copy | `src/config/marketing.ts` |
 | Change colors, radius, fonts | `src/app/globals.css` (see [design.md](./design.md)) |
 | Add a sidebar link | `src/config/navigation.ts` |
