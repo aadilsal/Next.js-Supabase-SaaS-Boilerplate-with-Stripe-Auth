@@ -32,7 +32,7 @@ const serverSchema = z.object({
   STRIPE_SECRET_KEY: optionalString,
   STRIPE_WEBHOOK_SECRET: optionalString,
   RESEND_API_KEY: optionalString,
-  EMAIL_FROM: z.string().min(1).default("Acme <onboarding@resend.dev>"),
+  EMAIL_FROM: z.string().min(1).default("VersaLaunch <onboarding@resend.dev>"),
   // Build-time only (read by next.config.ts) to upload source maps to Sentry. Optional.
   SENTRY_ORG: optionalString,
   SENTRY_PROJECT: optionalString,
@@ -47,10 +47,19 @@ function parse<T extends z.ZodType>(schema: T, values: Record<string, unknown>):
       .join("\n");
     throw new Error(
       `Invalid or missing environment variables:\n${problems}\n` +
-        `Copy .env.example to .env.local and fill in the values. See docs/getting-started.md.`,
+        `Copy .env.example to .env.local and fill in the values (see "Up and running" in README.md).`,
     );
   }
   return result.data;
+}
+
+/**
+ * True when the Supabase URL and anon key are set. Lets optional work (the
+ * public price catalog, storing logs) skip quietly instead of failing, e.g.
+ * during a first `pnpm build` before .env.local exists.
+ */
+export function isSupabaseConfigured(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 }
 
 let cachedPublic: z.infer<typeof publicSchema> | undefined;

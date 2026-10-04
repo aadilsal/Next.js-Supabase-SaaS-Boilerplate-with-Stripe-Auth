@@ -1,6 +1,16 @@
 import { redirect } from "next/navigation";
-import { CtaSection, Faq, FeatureGrid, Hero, Section } from "@/components/marketing/sections";
+import {
+  CtaSection,
+  Faq,
+  FeatureGrid,
+  Hero,
+  ProofStats,
+  Section,
+  TechStack,
+  Testimonials,
+} from "@/components/marketing/sections";
 import { features } from "@/config/features";
+import { marketingConfig } from "@/config/marketing";
 import { PricingTable } from "@/features/billing/components/pricing-table";
 import { getPriceCatalog } from "@/features/billing/queries";
 
@@ -16,9 +26,12 @@ export default async function LandingPage() {
   return (
     <>
       <Hero />
+      <TechStack />
       <FeatureGrid />
+      <ProofStats />
+      <Testimonials />
       {features.billing && (
-        <Section id="pricing" title="Simple, transparent pricing" subtitle="Start free. Upgrade when you're ready.">
+        <Section id="pricing" title={marketingConfig.pricing.title} subtitle={marketingConfig.pricing.subtitle}>
           <PricingTable mode={{ kind: "marketing" }} catalog={catalog} />
         </Section>
       )}

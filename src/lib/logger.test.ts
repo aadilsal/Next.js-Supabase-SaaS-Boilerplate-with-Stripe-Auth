@@ -32,6 +32,10 @@ import { logger, serializeError } from "./logger";
 
 describe("logger", () => {
   beforeEach(() => {
+    // The logger only stores entries once Supabase is configured.
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54321");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-test-key");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-test-key");
     mocks.inserted.length = 0;
     mocks.captureException.mockReset();
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -64,6 +68,13 @@ describe("logger", () => {
 
   it("does not store info logs (below databaseLogLevel)", async () => {
     logger.info("team.created");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(mocks.inserted).toHaveLength(0);
+  });
+
+  it("skips the database when Supabase isn't configured yet", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+    logger.error("build.something_failed", { error: new Error("boom") });
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(mocks.inserted).toHaveLength(0);
   });

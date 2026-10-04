@@ -3,6 +3,7 @@ import "server-only";
 import * as Sentry from "@sentry/nextjs";
 import { after } from "next/server";
 import { observabilityConfig, type LogLevel } from "@/config/observability";
+import { isSupabaseConfigured } from "@/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -77,7 +78,9 @@ function write(level: LogLevel, event: string, context: LogContext = {}) {
     Sentry.addBreadcrumb({ category: event, level: level === "warn" ? "warning" : level, message, data: rest });
   }
 
-  if (LEVELS[level] >= LEVELS[observabilityConfig.databaseLogLevel]) {
+  // Store in app_logs only once the database is configured (not during a first build).
+  const canPersist = isSupabaseConfigured() && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  if (canPersist && LEVELS[level] >= LEVELS[observabilityConfig.databaseLogLevel]) {
     const persist = () =>
       saveToDatabase({ level, event, message, userId, teamId, context: rest, error: serialized });
     try {

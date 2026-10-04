@@ -12,6 +12,8 @@ const db = vi.hoisted(() => ({
 
 vi.mock("@/env", () => ({
   serverEnv: () => ({ STRIPE_SECRET_KEY: "sk_test_123", STRIPE_WEBHOOK_SECRET: "whsec_test_secret" }),
+  // Keeps the logger from trying to store entries during this test.
+  isSupabaseConfigured: () => false,
 }));
 
 vi.mock("@/lib/stripe", async () => {

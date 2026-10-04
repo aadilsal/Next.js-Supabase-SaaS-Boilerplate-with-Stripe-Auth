@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
+import { isSupabaseConfigured } from "@/env";
 import { logger } from "@/lib/logger";
 import { createPublicClient } from "@/lib/supabase/public";
 import { createClient } from "@/lib/supabase/server";
@@ -13,6 +14,8 @@ import { resolveEntitlements, type TeamEntitlements } from "./lib/entitlements";
  * falls back to the amounts in src/config/billing.ts.
  */
 export async function getPriceCatalog(): Promise<PriceCatalog> {
+  // Not set up yet (e.g. first build without .env.local): show config prices.
+  if (!isSupabaseConfigured()) return {};
   try {
     const { data, error } = await createPublicClient()
       .from("prices")

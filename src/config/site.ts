@@ -8,26 +8,29 @@
  *  - auth email HTML            -> supabase/templates/*.html (name + brandColor)
  */
 export const siteConfig = {
-  name: "Acme",
+  name: "VersaLaunch",
   tagline: "Launch your SaaS this weekend",
   description:
-    "The production-ready Next.js & Supabase starter with auth, Stripe billing, teams and transactional emails built in.",
+    "VersaLaunch is the production-ready Next.js & Supabase SaaS boilerplate with Stripe billing, multi-tenant teams, audit logs and transactional emails built in.",
 
   /** Absolute URL of the deployed app. Set NEXT_PUBLIC_SITE_URL per environment. */
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
 
+  // TODO: replace with your real support address before launch.
   supportEmail: "support@example.com",
 
   /** Shown in the footer, legal pages and email footers. */
   company: {
-    legalName: "Acme Inc.",
-    address: "123 Market Street, San Francisco, CA 94103",
+    legalName: "TechVersa",
+    // TODO: replace with your registered business address (required in email footers in many countries).
+    address: "Your business address",
   },
 
-  /** Leave a link empty ("") to hide its icon. */
+  /** Leave a link empty ("") to hide it. */
   social: {
-    twitter: "https://x.com",
-    github: "https://github.com",
+    // TODO: add your profiles, e.g. "https://x.com/techversa".
+    twitter: "",
+    github: "",
   },
 
   /**

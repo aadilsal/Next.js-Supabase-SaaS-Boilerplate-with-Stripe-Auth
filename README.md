@@ -1,6 +1,8 @@
 <div align="center">
 
-# Next.js & Supabase SaaS Boilerplate with Stripe Auth
+# VersaLaunch
+
+**Next.js & Supabase SaaS Boilerplate with Stripe Auth** · by TechVersa
 
 ### Launch your SaaS this weekend, not in two months.
 
@@ -175,6 +177,47 @@ Open <http://localhost:3000> and sign in with a demo account (password `password
 | `admin@example.com` | Platform admin (can open `/admin`) |
 
 Supabase emails land in the local inbox at <http://localhost:54324>.
+
+## 💳 Testing Stripe webhooks locally
+
+Stripe can't reach `localhost`, so the [Stripe CLI](https://docs.stripe.com/stripe-cli) forwards events to your machine:
+
+```bash
+stripe login                                                   # once
+stripe listen --forward-to localhost:3000/api/webhooks/stripe  # same as: pnpm stripe:listen
+```
+
+Copy the `whsec_…` signing secret it prints into `STRIPE_WEBHOOK_SECRET` in `.env.local`, then restart `pnpm dev`. Keep `stripe listen` running while you test.
+
+**Try a full payment:** sign in as `owner@example.com`, open **Settings → Billing**, choose a plan and pay with the test card `4242 4242 4242 4242` (any future date, any CVC). The webhook writes the subscription to your database and the plan updates within seconds. You can also fire individual events:
+
+```bash
+stripe trigger checkout.session.completed
+stripe trigger customer.subscription.updated
+stripe trigger invoice.payment_failed
+```
+
+**In production**, add an endpoint in Stripe Dashboard → Developers → Webhooks pointing to `https://yourdomain.com/api/webhooks/stripe`, subscribe it to the events listed in [`HANDLED_EVENTS`](src/features/billing/webhooks/handlers.ts), and put its signing secret in your host's environment variables.
+
+## 🗄️ Database setup: CLI or SQL Editor?
+
+The schema lives in versioned migration files in [`supabase/migrations/`](supabase/migrations/). **Use the Supabase CLI.** It's already installed as a dev dependency.
+
+**Local development:** `pnpm db:start` then `pnpm db:reset` applies every migration plus the demo data in `supabase/seed.sql`. Run `pnpm db:test` to execute the Row Level Security tests.
+
+**Production, recommended (CLI):**
+
+```bash
+pnpm exec supabase login
+pnpm exec supabase link --project-ref <your-project-ref>   # from your project's URL / settings
+pnpm db:push                                               # applies all pending migrations
+```
+
+The CLI records which migrations have run, so when you install a VersaLaunch update, `pnpm db:push` applies only the new ones.
+
+**Production, alternative (SQL Editor):** if you can't use the CLI, open Supabase Dashboard → SQL Editor and run each file in `supabase/migrations/` **one at a time, in filename order** (oldest first). Don't run `seed.sql` in production: it creates demo accounts. With this method you must apply future migrations by hand, in order.
+
+After either method, run `pnpm stripe:sync` (with production env vars) to load your Stripe prices.
 
 ## 📚 Documentation
 

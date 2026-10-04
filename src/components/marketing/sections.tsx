@@ -69,6 +69,65 @@ export function Hero() {
   );
 }
 
+/** "Built with" strip under the hero. */
+export function TechStack() {
+  const { techStack } = marketingConfig;
+  if (techStack.length === 0) return null;
+  return (
+    <section aria-label="Built with" className="border-y bg-muted/30 py-8">
+      <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 px-4 sm:px-6">
+        <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">Built with</p>
+        <ul className="flex flex-wrap justify-center gap-x-8 gap-y-3">
+          {techStack.map((name) => (
+            <li key={name} className="text-sm font-semibold text-muted-foreground">
+              {name}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+/** Verifiable product facts. Hidden when `stats` is empty. */
+export function ProofStats() {
+  const { stats } = marketingConfig;
+  if (stats.length === 0) return null;
+  return (
+    <Section>
+      <dl className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="flex flex-col-reverse rounded-xl border bg-card p-6 text-center">
+            <dt className="mt-2 text-sm text-muted-foreground">{stat.label}</dt>
+            <dd className="text-4xl font-semibold tracking-tight text-primary">{stat.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </Section>
+  );
+}
+
+/** Customer quotes. Renders nothing until real testimonials are added to config. */
+export function Testimonials() {
+  const { testimonials } = marketingConfig;
+  if (testimonials.length === 0) return null;
+  return (
+    <Section id="testimonials" title="Loved by builders">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {testimonials.map((testimonial) => (
+          <figure key={testimonial.name} className="flex flex-col gap-4 rounded-xl border bg-card p-6">
+            <blockquote className="flex-1 text-sm leading-6">&ldquo;{testimonial.quote}&rdquo;</blockquote>
+            <figcaption className="text-sm">
+              <span className="font-medium">{testimonial.name}</span>
+              <span className="text-muted-foreground"> · {testimonial.role}</span>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 export function FeatureGrid() {
   const { features } = marketingConfig;
   return (

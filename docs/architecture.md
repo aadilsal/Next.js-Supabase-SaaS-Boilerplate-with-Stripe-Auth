@@ -388,7 +388,7 @@ CI (GitHub Actions) runs `typecheck`, `lint`, `test`, `supabase test db` and the
 | `STRIPE_WEBHOOK_SECRET` | **server only** | |
 | `NEXT_PUBLIC_STRIPE_PRICE_PRO_MONTHLY` / `_YEARLY` / `NEXT_PUBLIC_STRIPE_PRICE_LIFETIME` | public | Referenced from `config/billing.ts`. Price IDs are not secret, and the pricing table needs them in the browser |
 | `RESEND_API_KEY` | **server only** | |
-| `EMAIL_FROM` | server | e.g. `Acme <hello@acme.com>` |
+| `EMAIL_FROM` | server | e.g. `VersaLaunch <hello@yourdomain.com>` |
 | `NEXT_PUBLIC_SENTRY_DSN` | public | Turns Sentry on. DSNs are public by design. Empty = off |
 | `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | **build-time only** | Upload source maps for readable stack traces. Optional |
 
